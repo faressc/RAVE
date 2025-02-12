@@ -82,79 +82,6 @@ class AudioDataset(data.Dataset):
 
         return audio
 
-
-class LazyAudioDataset(data.Dataset):
-
-    @property
-    def env(self) -> lmdb.Environment:
-        if self._env is None:
-            self._env = lmdb.open(self._db_path, lock=False)
-        return self._env
-
-    @property
-    def keys(self) -> Sequence[str]:
-        if self._keys is None:
-            with self.env.begin() as txn:
-                self._keys = list(txn.cursor().iternext(values=False))
-        return self._keys
-
-    def __init__(self,
-                 db_path: str,
-                 n_signal: int,
-                 sampling_rate: int,
-                 transforms: Optional[transforms.Transform] = None,
-                 n_channels: int = 1) -> None:
-        super().__init__()
-        self._db_path = db_path
-        self._env = None
-        self._keys = None
-        self._transforms = transforms
-        self._n_signal = n_signal
-        self._sampling_rate = sampling_rate
-        self._n_channels = n_channels
-
-        self.parse_dataset()
-
-    def parse_dataset(self):
-        items = []
-        for key in tqdm(self.keys, desc='Discovering dataset'):
-            with self.env.begin() as txn:
-                ae = AudioExample.FromString(txn.get(key))
-            length = float(ae.metadata['length'])
-            n_signal = int(math.floor(length * self._sampling_rate))
-            n_chunks = n_signal // self._n_signal
-            items.append(n_chunks)
-        items = np.asarray(items)
-        items = np.cumsum(items)
-        self.items = items
-
-    def __len__(self):
-        return self.items[-1]
-
-    def __getitem__(self, index):
-        audio_id = np.where(index < self.items)[0][0]
-        if audio_id:
-            index -= self.items[audio_id - 1]
-
-        key = self.keys[audio_id]
-
-        with self.env.begin() as txn:
-            ae = AudioExample.FromString(txn.get(key))
-
-        audio = extract_audio(
-            ae.metadata['path'],
-            self._n_signal,
-            self._sampling_rate,
-            index * self._n_signal,
-            int(ae.metadata['channels']),
-            self._n_channels
-        )
-
-        if self._transforms is not None:
-            audio = self._transforms(audio)
-
-        return audio
-
 def get_channels_from_dataset(db_path):
     with open(os.path.join(db_path, 'metadata.yaml'), 'r') as metadata:
         metadata = yaml.safe_load(metadata)
@@ -218,7 +145,6 @@ def get_dataset(db_path,
         metadata = yaml.safe_load(metadata)
 
     sr_dataset = metadata.get('sr', 44100)
-    lazy = metadata['lazy']
 
     transform_list = [
         lambda x: x.astype(np.float32),
@@ -251,14 +177,11 @@ def get_dataset(db_path,
 
     transform_list = transforms.Compose(transform_list)
 
-    if lazy:
-        return LazyAudioDataset(db_path, n_signal, sr_dataset, transform_list, n_channels)
-    else:
-        return AudioDataset(
-            db_path,
-            transforms=transform_list,
-            n_channels=n_channels
-        )
+    return AudioDataset(
+        db_path,
+        transforms=transform_list,
+        n_channels=n_channels
+    )
 
 
 @gin.configurable

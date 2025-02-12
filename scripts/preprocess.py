@@ -43,9 +43,6 @@ flags.DEFINE_multi_string(
     'ext',
     default=['aif', 'aiff', 'wav', 'opus', 'mp3', 'aac', 'flac', 'ogg'],
     help='Extension to search for in the input directory')
-flags.DEFINE_bool('lazy',
-                  default=False,
-                  help='Decode and resample audio samples.')
 flags.DEFINE_bool('dyndb',
                   default=True,
                   help="Allow the database to grow dynamically")
@@ -157,20 +154,6 @@ def process_audio_array(audio: Tuple[int, bytes],
         )
     return audio_id
 
-
-def process_audio_file(audio: Tuple[int, Tuple[str, float]],
-                       env: lmdb.Environment) -> int:
-    audio_id, (path, length, channels) = audio
-    ae = AudioExample(metadata={'path': path, 'length': str(length), 'channels': str(channels)})
-    key = f'{audio_id:08d}'
-    with env.begin(write=True) as txn:
-        txn.put(
-            key.encode(),
-            ae.SerializeToString(),
-        )
-    return length
-
-
 def flatmap(pool: multiprocessing.Pool,
             func: Callable,
             iterable: Iterable,
@@ -208,16 +191,6 @@ def search_for_audios(path_list: Sequence[str], extensions: Sequence[str]):
 
 
 def main(argv):
-    if FLAGS.lazy and os.name in ["nt", "posix"]:
-        while (answer := input(
-                "Using lazy datasets on Windows/macOS might result in slow training. Continue ? (y/n) "
-        ).lower()) not in ["y", "n"]:
-            print("Answer 'y' or 'n'.")
-        if answer == "n":
-            print("Aborting...")
-            exit()
-
-
     chunk_load = partial(load_audio_chunk,
                          n_signal=FLAGS.num_signal,
                          sr=FLAGS.sampling_rate,
@@ -245,40 +218,25 @@ def main(argv):
     if len(audios) == 0:
         print("No valid file found in %s. Aborting"%FLAGS.input_path)
 
-    if not FLAGS.lazy:
+    # load chunks
+    chunks = flatmap(pool, chunk_load, audios)
+    chunks = enumerate(chunks)
 
-        # load chunks
-        chunks = flatmap(pool, chunk_load, audios)
-        chunks = enumerate(chunks)
+    processed_samples = map(partial(process_audio_array, env=env, channels=FLAGS.channels), chunks)
 
-        processed_samples = map(partial(process_audio_array, env=env, channels=FLAGS.channels), chunks)
-
-        pbar = tqdm(processed_samples)
-        n_seconds = 0
-        for audio_id in pbar:
-            n_seconds = (FLAGS.num_signal * 2) / FLAGS.sampling_rate * audio_id
-            pbar.set_description(
-                f'dataset length: {timedelta(seconds=n_seconds)}')
-        pbar.close()
-    else:
-        audio_lengths = pool.imap_unordered(get_audio_length, audios)
-        audio_lengths = filter(lambda x: x is not None, audio_lengths)
-        audio_lengths = enumerate(audio_lengths)
-        processed_samples = map(partial(process_audio_file, env=env),
-                                audio_lengths)
-        pbar = tqdm(processed_samples)
-        n_seconds = 0
-        for length in pbar:
-            n_seconds += length
-            pbar.set_description(
-                f'dataset length: {timedelta(seconds=n_seconds)}')
-        pbar.close()
+    pbar = tqdm(processed_samples)
+    n_seconds = 0
+    for audio_id in pbar:
+        n_seconds = (FLAGS.num_signal * 2) / FLAGS.sampling_rate * audio_id
+        pbar.set_description(
+            f'dataset length: {timedelta(seconds=n_seconds)}')
+    pbar.close()
 
     with open(os.path.join(
             FLAGS.output_path,
             'metadata.yaml',
     ), 'w') as metadata:
-        yaml.safe_dump({'lazy': FLAGS.lazy, 'channels': FLAGS.channels, 'n_seconds': n_seconds, 'sr': FLAGS.sampling_rate}, metadata)
+        yaml.safe_dump({'channels': FLAGS.channels, 'n_seconds': n_seconds, 'sr': FLAGS.sampling_rate}, metadata)
     pool.close()
     env.close()
 

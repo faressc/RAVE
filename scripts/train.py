@@ -48,7 +48,10 @@ flags.DEFINE_integer('save_every',
 flags.DEFINE_integer('n_signal',
                      131072,
                      help='Number of audio samples to use during training')
-flags.DEFINE_integer('channels', 0, help="number of audio channels")
+flags.DEFINE_integer('channels',
+                     None,
+                     help="number of audio channels",
+                    required=True)
 flags.DEFINE_integer('batch', 8, help='Batch size')
 flags.DEFINE_string('ckpt',
                     None,

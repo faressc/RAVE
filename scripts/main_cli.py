@@ -54,3 +54,6 @@ def main():
         app.run(remote_dataset.main)
     else:
         raise Exception(f'Command {command} not found')
+    
+if __name__ == '__main__':
+    main()
