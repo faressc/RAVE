@@ -1,23 +1,28 @@
 stages:
   preprocess:
-    cmd: python3 scripts/preprocess.py --input_path ${preprocess.input_path} --output_path ${preprocess.output_path} --num_signal ${preprocess.num_signal} --sampling_rate ${preprocess.sampling_rate}
+    cmd: >
+      python3 scripts/preprocess.py  
+      --input_path ${preprocess.input_path} 
+      --output_path ${preprocess.output_path} 
+      --num_signal ${preprocess.num_signal}  
+      --sampling_rate ${preprocess.sampling_rate}
     deps:
       - scripts/preprocess.py
       - data/raw/
     outs:
       - data/processed/
-  # train:
-  #   cmd: python scripts/train.py
-  #   deps:
-  #     - scripts/train.py
-  #     - rave/
-  #     - data/processed/
-  #   outs:
-  #     - models/checkpoints/
-  # export:
-  #   cmd: python scripts/export.py
-  #   deps:
-  #     - scripts/export.py
-  #     - models/checkpoints/
-  #   outs:
-  #     - models/exports/
+  train:
+    cmd: python scripts/train.py
+    deps:
+      - scripts/train.py
+      - rave/
+      - data/processed/
+    outs:
+      - models/checkpoints/
+  export:
+    cmd: python scripts/export.py
+    deps:
+      - scripts/export.py
+      - models/checkpoints/
+    outs:
+      - models/exports/
