@@ -1,0 +1,8 @@
+preprocess:
+  input_path: data/raw
+  output_path: data/processed
+  num_signal: 131072
+  sampling_rate: 44100
+model:
+train:
+export:
