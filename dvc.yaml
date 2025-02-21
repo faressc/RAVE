@@ -12,7 +12,21 @@ stages:
     outs:
       - data/processed/
   train:
-    cmd: python scripts/train.py
+    cmd: >
+      python3 scripts/train.py
+      --name ${train.name}
+      --db_path ${train.db_path}
+      --out_path ${train.out_path}
+      --max_steps ${train.max_steps}
+      --val_every ${train.val_every}
+      --save_every ${train.save_every}
+      --channels ${train.channels}
+      --batch ${train.batch}
+      --workers ${train.workers}
+      --gpu ${train.gpu}
+      --derivative ${train.derivative}
+      --normalize ${train.normalize}
+      --smoke_test ${train.smoke_test}
     deps:
       - scripts/train.py
       - rave/
