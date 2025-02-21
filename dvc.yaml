@@ -34,7 +34,13 @@ stages:
     outs:
       - models/checkpoints/
   export:
-    cmd: python scripts/export.py
+    cmd: >
+      python scripts/export.py
+      --run ${export.run}
+      --streaming ${export.streaming}
+      --fidelity ${export.fidelity}
+      --name ${export.name}
+      --output ${export.output}
     deps:
       - scripts/export.py
       - models/checkpoints/

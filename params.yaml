@@ -8,7 +8,7 @@ train:
   name: test
   db_path: data/processed
   out_path: models/checkpoints
-  max_steps: 6000000
+  max_steps: 100 # 6000000
   val_every: 10 # 10000
   save_every: 5000 # 500000
   channels: 1
@@ -19,3 +19,8 @@ train:
   normalize: False
   smoke_test: False
 export:
+  run: models/checkpoints/test
+  streaming: True
+  fidelity: 0.999
+  name: test
+  output: models/exports

@@ -204,7 +204,7 @@ def main(argv):
     gin_hash = hashlib.md5(
         gin.operative_config_str().encode()).hexdigest()[:10]
 
-    RUN_NAME = f'{FLAGS.name}_{gin_hash}'
+    RUN_NAME = f'{FLAGS.name}'#_{gin_hash}'
 
     os.makedirs(os.path.join(FLAGS.out_path, RUN_NAME), exist_ok=True)
 
