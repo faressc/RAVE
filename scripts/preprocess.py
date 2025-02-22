@@ -34,10 +34,6 @@ parser.add_argument('--sample_rate', type=int, help='Sampling rate to use during
 parser.add_argument('--max_db_size', type=int, help='Maximum size (in GB) of the dataset', default=100)
 parser.add_argument('--ext', type=str, nargs='+', help='Extension to search for in the input directory', default=['aif', 'aiff', 'wav', 'opus', 'mp3', 'aac', 'flac', 'ogg'])
 
-def float_array_to_int16_bytes(x):
-    return np.floor(x * (2**15 - 1)).astype(np.int16).tobytes()
-
-
 def load_audio_chunk(path: str, n_signal: int,
                      sr: int, channels: int = 1) -> Iterable[np.ndarray]:
 
@@ -111,15 +107,6 @@ def flatten(iterator: Iterable):
     for elm in iterator:
         for sub_elm in elm:
             yield sub_elm
-
-def get_metadata(audio_samples, channels: int = 1):
-    audio = np.frombuffer(audio_samples, dtype=np.int16)
-    audio = audio.astype(float) / (2**15 - 1)
-    audio = audio.reshape(channels, -1)
-    peak_amplitude = np.amax(np.abs(audio))
-    rms_amplitude = np.sqrt(np.mean(audio**2))
-    return {'peak': peak_amplitude, 'rms_amplitude': rms_amplitude}
-
 
 def process_audio_array(audio: Tuple[int, bytes],
                         env: lmdb.Environment,
@@ -229,7 +216,7 @@ def main(argv):
     pbar = tqdm(processed_samples)
     n_seconds = 0
     for audio_id in pbar:
-        n_seconds = (args.num_signal) / args.sample_rate * audio_id
+        n_seconds = (args.num_signal) / args.sample_rate * (audio_id + 1)
         pbar.set_description(
             f'Current dataset length: {timedelta(seconds=n_seconds)}')
     pbar.close()
