@@ -2,7 +2,8 @@ preprocess:
   input_path: data/raw
   output_path: data/processed
   num_signal: 131072
-  sampling_rate: 44100
+  sample_rate: 44100
+  channels: 1
 model:
 train:
   name: test
