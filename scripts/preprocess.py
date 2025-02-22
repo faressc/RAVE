@@ -7,46 +7,32 @@ from datetime import timedelta
 from functools import partial
 from itertools import repeat
 from typing import Callable, Iterable, Sequence, Tuple
+import argparse
+import math
 
 import lmdb
 import numpy as np
 import torch
 import yaml
-import math
-from absl import app, flags
 from tqdm import tqdm
-from udls.generated import AudioExample
+try:
+    from proto.audio_example_pb2 import AudioExample
+except:
+    import sys
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    from proto.audio_example_pb2 import AudioExample
 
 torch.set_grad_enabled(False)
 
-FLAGS = flags.FLAGS
+parser = argparse.ArgumentParser()
 
-flags.DEFINE_multi_string('input_path',
-                          None,
-                          help='Path to a directory containing audio files',
-                          required=True)
-flags.DEFINE_string('output_path',
-                    None,
-                    help='Output directory for the dataset',
-                    required=True)
-flags.DEFINE_integer('num_signal',
-                     131072,
-                     help='Number of audio samples to use during training')
-flags.DEFINE_integer('channels', 1, help="Number of audio channels")
-flags.DEFINE_integer('sampling_rate',
-                     44100,
-                     help='Sampling rate to use during training')
-flags.DEFINE_integer('max_db_size',
-                     100,
-                     help='Maximum size (in GB) of the dataset')
-flags.DEFINE_multi_string(
-    'ext',
-    default=['aif', 'aiff', 'wav', 'opus', 'mp3', 'aac', 'flac', 'ogg'],
-    help='Extension to search for in the input directory')
-flags.DEFINE_bool('dyndb',
-                  default=True,
-                  help="Allow the database to grow dynamically")
-
+parser.add_argument('--input_path', type=str, help='Path to a directory containing audio files', required=True)
+parser.add_argument('--output_path', type=str, help='Output directory for the dataset', required=True)
+parser.add_argument('--num_signal', type=int, help='Number of audio samples to use during training', default=131072)
+parser.add_argument('--channels', type=int, help="Number of audio channels", required=True)
+parser.add_argument('--sample_rate', type=int, help='Sampling rate to use during training', default=44100)
+parser.add_argument('--max_db_size', type=int, help='Maximum size (in GB) of the dataset', default=100)
+parser.add_argument('--ext', type=str, nargs='+', help='Extension to search for in the input directory', default=['aif', 'aiff', 'wav', 'opus', 'mp3', 'aac', 'flac', 'ogg'])
 
 def float_array_to_int16_bytes(x):
     return np.floor(x * (2**15 - 1)).astype(np.int16).tobytes()
@@ -55,11 +41,11 @@ def float_array_to_int16_bytes(x):
 def load_audio_chunk(path: str, n_signal: int,
                      sr: int, channels: int = 1) -> Iterable[np.ndarray]:
 
-    _, input_channels = get_audio_channels(path)
+    _, wav_channels = get_audio_channels(path)
     channel_map = range(channels)
-    if input_channels < channels:
-        channel_map = (math.ceil(channels / input_channels) * list(range(input_channels)))[:channels]
-
+    if wav_channels < channels:
+        channel_map = (math.ceil(channels / wav_channels) * list(range(wav_channels)))[:channels]
+    
     processes = []
     for i in range(channels): 
         process = subprocess.Popen(
@@ -71,14 +57,17 @@ def load_audio_chunk(path: str, n_signal: int,
                 '-'
             ],
             stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
         )
         processes.append(process)
     
-    chunk = [p.stdout.read(n_signal * 4) for p in processes]
-    while len(chunk[0]) == n_signal * 4:
+    # Times two because we are reading 2 bytes per sample (16 bit)
+    chunk = [p.stdout.read(n_signal * 2) for p in processes]
+    while len(chunk[0]) == n_signal * 2:
         yield b''.join(chunk)
-        chunk = [p.stdout.read(n_signal * 4) for p in processes]
+        chunk = [p.stdout.read(n_signal * 2) for p in processes]
     process.stdout.close()
+    process.stderr.close()
 
 
 def get_audio_length(path: str) -> float:
@@ -88,15 +77,14 @@ def get_audio_length(path: str) -> float:
             'format=duration'
         ],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.PIPE
     )
-    stdout, _ = process.communicate()
+    stdout, stderr = process.communicate()
     if process.returncode: return None
     try:
         stdout = stdout.decode().split('\n')[1].split('=')[-1]
         length = float(stdout)
-        _, channels = get_audio_channels(path)
-        return path, float(length), int(channels)
+        return path, float(length)
     except:
         return None
 
@@ -116,7 +104,7 @@ def get_audio_channels(path: str) -> int:
         channels = int(stdout)
         return path, int(channels)
     except:
-        return None 
+        return None
 
 
 def flatten(iterator: Iterable):
@@ -135,17 +123,19 @@ def get_metadata(audio_samples, channels: int = 1):
 
 def process_audio_array(audio: Tuple[int, bytes],
                         env: lmdb.Environment,
+                        sample_rate: int = 44100,
                         channels: int = 1) -> int:
     audio_id, audio_samples = audio
     buffers = {}
     buffers['waveform'] = AudioExample.AudioBuffer(
         shape=(channels, int(len(audio_samples) / channels)),
-        sampling_rate=FLAGS.sampling_rate,
+        sampling_rate=sample_rate,
         data=audio_samples,
         precision=AudioExample.Precision.INT16,
     )
 
     ae = AudioExample(buffers=buffers)
+    # The :08d means that the string will be 8 characters long and will be zero-padded
     key = f'{audio_id:08d}'
     with env.begin(write=True) as txn:
         txn.put(
@@ -154,7 +144,7 @@ def process_audio_array(audio: Tuple[int, bytes],
         )
     return audio_id
 
-def flatmap(pool: multiprocessing.Pool,
+def flatmap(pool,
             func: Callable,
             iterable: Iterable,
             chunksize=None):
@@ -179,67 +169,78 @@ def flat_mappper(func, arg):
         queue.put(item)
 
 
-def search_for_audios(path_list: Sequence[str], extensions: Sequence[str]):
-    paths = map(pathlib.Path, path_list)
+def search_for_audios(path: str, extensions: Sequence[str]):
+    path = pathlib.Path(path)
     audios = []
-    for p in paths:
-        for ext in extensions:
-            audios.append(p.rglob(f'*.{ext}'))
-            audios.append(p.rglob(f'*.{ext.upper()}'))
+    if not path.is_dir():
+        raise ValueError(f"Path {path} is not a directory")
+    for ext in extensions:
+        audios.append(path.rglob(f'*.{ext}'))
+        audios.append(path.rglob(f'*.{ext.upper()}'))
+    # flatten because rglob returns a generator and we list them for each extension
     audios = flatten(audios)
     return audios
 
 
 def main(argv):
-    chunk_load = partial(load_audio_chunk,
-                         n_signal=FLAGS.num_signal,
-                         sr=FLAGS.sampling_rate,
-                         channels=FLAGS.channels)
+    args = parser.parse_args()
 
-    output_dir = os.path.join(*os.path.split(FLAGS.output_path)[:-1])
+    print(f"Processing audio files in {args.input_path} to {args.output_path}")
+
+    # The LMDB database will itself create the final directory, as it has multiple files
+    # The * operator is used to unpack the tuple into single elements
+    output_dir = os.path.join(*os.path.split(args.output_path)[:-1])
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
 
-    # create database
+    print(f"Creating LMDB database at {args.output_path}")
+    # Create a new LMDB database
     env = lmdb.open(
-        FLAGS.output_path,
-        map_size=FLAGS.max_db_size * 1024**3,
-        map_async=not FLAGS.dyndb,
-        writemap=not FLAGS.dyndb,
+        args.output_path,
+        map_size=args.max_db_size * 1024**3,
     )
-    pool = multiprocessing.Pool()
 
-
-    # search for audio files
-    audios = search_for_audios(FLAGS.input_path, FLAGS.ext)
+    print("Searching for audio files")
+    # Search for audio files
+    audios = search_for_audios(args.input_path, args.ext)
     audios = map(str, audios)
     audios = map(os.path.abspath, audios)
-    audios = [*audios]
+    # Evaluate the generator
+    audios = list(audios)
+    print("Number of audio files: ", len(audios))
     if len(audios) == 0:
-        print("No valid file found in %s. Aborting"%FLAGS.input_path)
+        print("No valid file found in %s. Aborting"%args.input_path)
 
+    print("Loading audio files")
+    # Fix the parameters for the load_audio_chunk function in new chunk_load function
+    chunk_load = partial(load_audio_chunk,
+                         n_signal=args.num_signal,
+                         sr=args.sample_rate,
+                         channels=args.channels)
+    # create a pool of workers
+    pool = multiprocessing.Pool()
     # load chunks
     chunks = flatmap(pool, chunk_load, audios)
     chunks = enumerate(chunks)
-
-    processed_samples = map(partial(process_audio_array, env=env, channels=FLAGS.channels), chunks)
-
+    # The map function will not be evaluated until we iterate over it
+    processed_samples = map(partial(process_audio_array, env=env, sample_rate = args.sample_rate, channels=args.channels), chunks)
+    
+    # Evaluate the generator
     pbar = tqdm(processed_samples)
     n_seconds = 0
     for audio_id in pbar:
-        n_seconds = (FLAGS.num_signal * 2) / FLAGS.sampling_rate * audio_id
+        n_seconds = (args.num_signal) / args.sample_rate * audio_id
         pbar.set_description(
-            f'dataset length: {timedelta(seconds=n_seconds)}')
+            f'Current dataset length: {timedelta(seconds=n_seconds)}')
     pbar.close()
 
     with open(os.path.join(
-            FLAGS.output_path,
+            args.output_path,
             'metadata.yaml',
     ), 'w') as metadata:
-        yaml.safe_dump({'channels': FLAGS.channels, 'n_seconds': n_seconds, 'sr': FLAGS.sampling_rate}, metadata)
+        yaml.safe_dump({'channels': args.channels, 'n_seconds': n_seconds, 'sr': args.sample_rate}, metadata)
     pool.close()
     env.close()
 
-
 if __name__ == '__main__':
-    app.run(main)
+    main(sys.argv)

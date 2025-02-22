@@ -23,35 +23,36 @@ def main():
         help()
 
     command = sys.argv[1]
+    sys.argv = sys.argv[1:]
 
     if command == 'train':
         from scripts import train
         sys.argv[0] = train.__name__
-        app.run(train.main)
+        train.main(sys.argv)
     elif command == 'train_prior':
         from scripts import train_prior
         sys.argv[0] = train_prior.__name__
-        app.run(train_prior.main)
+        train_prior.main(sys.argv)
     elif command == 'export':
         from scripts import export
         sys.argv[0] = export.__name__
-        app.run(export.main)
+        export.main(sys.argv)
     elif command == 'preprocess':
         from scripts import preprocess
         sys.argv[0] = preprocess.__name__
-        app.run(preprocess.main)
+        preprocess.main(sys.argv)
     elif command == 'export_onnx':
         from scripts import export_onnx
         sys.argv[0] = export_onnx.__name__
-        app.run(export_onnx.main)
+        export_onnx.main(sys.argv)
     elif command == "generate":
         from scripts import generate
         sys.argv[0] = generate.__name__
-        app.run(generate.main)
+        generate.main(sys.argv)
     elif command == 'remote_dataset':
         from scripts import remote_dataset
         sys.argv[0] = remote_dataset.__name__
-        app.run(remote_dataset.main)
+        remote_dataset.main(sys.argv)
     else:
         raise Exception(f'Command {command} not found')
     
