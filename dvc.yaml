@@ -1,0 +1,48 @@
+stages:
+  preprocess:
+    cmd: >
+      python3 scripts/preprocess.py  
+      --input_path ${preprocess.input_path} 
+      --output_path ${preprocess.output_path} 
+      --num_signal ${preprocess.num_signal}  
+      --sampling_rate ${preprocess.sampling_rate}
+    deps:
+      - scripts/preprocess.py
+      - data/raw/
+    outs:
+      - data/processed/
+  train:
+    cmd: >
+      python3 scripts/train.py
+      --name ${train.name}
+      --db_path ${train.db_path}
+      --out_path ${train.out_path}
+      --max_steps ${train.max_steps}
+      --val_every ${train.val_every}
+      --save_every ${train.save_every}
+      --channels ${train.channels}
+      --batch ${train.batch}
+      --workers ${train.workers}
+      --gpu ${train.gpu}
+      --derivative ${train.derivative}
+      --normalize ${train.normalize}
+      --smoke_test ${train.smoke_test}
+    deps:
+      - scripts/train.py
+      - rave/
+      - data/processed/
+    outs:
+      - models/checkpoints/
+  export:
+    cmd: >
+      python scripts/export.py
+      --run ${export.run}
+      --streaming ${export.streaming}
+      --fidelity ${export.fidelity}
+      --name ${export.name}
+      --output ${export.output}
+    deps:
+      - scripts/export.py
+      - models/checkpoints/
+    outs:
+      - models/exports/

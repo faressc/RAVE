@@ -17,3 +17,4 @@ torchaudio
 tensorboard
 pytest>=7.2.2
 Flask>=2.2.3
+dvc 
