@@ -123,11 +123,19 @@ class EMA(pl.Callback):
         self.weights.update(state_dict)
 
 def add_gin_extension(config_name: str) -> str:
+    '''Add .gin extension to the config file name if it is not present'''
     if config_name[-4:] != '.gin':
         config_name += '.gin'
     return config_name
 
 def parse_augmentations(augmentations):
+    '''Parse augmentation .gin files from config/augmentations for a given list of augmentation gin file names.
+    Clears the gin configuration after parsing each augmentation.
+    Args:
+        augmentations: list of augmentation gin file names
+    Returns:
+        global list of augmentation configurations
+    '''
     for a in augmentations:
         gin.parse_config_file(a)
         add_augmentation()
@@ -138,28 +146,33 @@ def main(argv):
     torch.set_float32_matmul_precision('high')
     torch.backends.cudnn.benchmark = True
 
-    # check dataset channels
-    n_channels = rave.dataset.get_training_channels(FLAGS.db_path, FLAGS.channels)
-    gin.bind_parameter('RAVE.n_channels', n_channels)
-
-    # parse augmentations
+    # parse augmentations (note: this function clears previous gin registration)
     augmentations = parse_augmentations(map(add_gin_extension, FLAGS.augment))
-    gin.bind_parameter('dataset.get_dataset.augmentations', augmentations)
+
+    # get number of channels
+    n_channels = rave.dataset.get_training_channels(FLAGS.db_path, FLAGS.channels)
+
+    # list to bind all configs at once (otherwise n_channels is not available)
+    extra_bindings = [
+    f"dataset.get_dataset.augmentations={augmentations}",
+    f"model.RAVE.n_channels={rave.dataset.get_training_channels(FLAGS.db_path, FLAGS.channels)}"]
 
     # parse configuration
     if FLAGS.ckpt:
+        # load config from checkpoint
         config_file = rave.core.search_for_config(FLAGS.ckpt)
         if config_file is None:
             print('Config file not found in %s'%FLAGS.run)
         gin.parse_config_file(config_file)
     else:
+        # create new config from FLAGS
         gin.parse_config_files_and_bindings(
             map(add_gin_extension, FLAGS.config),
-            FLAGS.override,
+            extra_bindings + FLAGS.override,
         )
-
+        
     # create model
-    model = rave.RAVE(n_channels=FLAGS.channels)
+    model = rave.RAVE()
     if FLAGS.derivative:
         model.integrator = rave.dataset.get_derivator_integrator(model.sr)[1]
 
