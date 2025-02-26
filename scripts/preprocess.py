@@ -7,10 +7,10 @@ from datetime import timedelta
 from functools import partial
 from itertools import repeat
 from typing import Callable, Iterable, Sequence, Tuple
-import argparse
 import math
 
 import lmdb
+import hydra
 import numpy as np
 import torch
 import yaml
@@ -23,16 +23,6 @@ except:
     from proto.audio_example_pb2 import AudioExample
 
 torch.set_grad_enabled(False)
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument('--input_path', type=str, help='Path to a directory containing audio files', required=True)
-parser.add_argument('--output_path', type=str, help='Output directory for the dataset', required=True)
-parser.add_argument('--num_signal', type=int, help='Number of audio samples to use during training', default=131072)
-parser.add_argument('--channels', type=int, help="Number of audio channels", required=True)
-parser.add_argument('--sample_rate', type=int, help='Sampling rate to use during training', default=44100)
-parser.add_argument('--max_db_size', type=int, help='Maximum size (in GB) of the dataset', default=100)
-parser.add_argument('--ext', type=str, nargs='+', help='Extension to search for in the input directory', default=['aif', 'aiff', 'wav', 'opus', 'mp3', 'aac', 'flac', 'ogg'])
 
 def load_audio_chunk(path: str, n_signal: int,
                      sr: int, channels: int = 1) -> Iterable[np.ndarray]:
@@ -168,66 +158,65 @@ def search_for_audios(path: str, extensions: Sequence[str]):
     audios = flatten(audios)
     return audios
 
+@hydra.main(config_path='../conf', config_name='config')
+def main(cfg):
 
-def main(argv):
-    args = parser.parse_args()
-
-    print(f"Processing audio files in {args.input_path} to {args.output_path}")
+    print(f"Processing audio files in {cfg.preprocess.input_path} to {cfg.preprocess.output_path}")
 
     # The LMDB database will itself create the final directory, as it has multiple files
     # The * operator is used to unpack the tuple into single elements
-    output_dir = os.path.join(*os.path.split(args.output_path)[:-1])
+    output_dir = os.path.join(*os.path.split(cfg.preprocess.output_path)[:-1])
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
 
-    print(f"Creating LMDB database at {args.output_path}")
+    print(f"Creating LMDB database at {cfg.preprocess.output_path}")
     # Create a new LMDB database
     env = lmdb.open(
-        args.output_path,
-        map_size=args.max_db_size * 1024**3,
+        cfg.preprocess.output_path,
+        map_size=cfg.preprocess.max_db_size * 1024**3,
     )
 
     print("Searching for audio files")
     # Search for audio files
-    audios = search_for_audios(args.input_path, args.ext)
+    audios = search_for_audios(cfg.preprocess.input_path, cfg.preprocess.ext)
     audios = map(str, audios)
     audios = map(os.path.abspath, audios)
     # Evaluate the generator
     audios = list(audios)
     print("Number of audio files: ", len(audios))
     if len(audios) == 0:
-        print("No valid file found in %s. Aborting"%args.input_path)
+        print("No valid file found in %s. Aborting"%cfg.preprocess.input_path)
 
     print("Loading audio files")
     # Fix the parameters for the load_audio_chunk function in new chunk_load function
     chunk_load = partial(load_audio_chunk,
-                         n_signal=args.num_signal,
-                         sr=args.sample_rate,
-                         channels=args.channels)
+                         n_signal=cfg.preprocess.num_signal,
+                         sr=cfg.preprocess.sample_rate,
+                         channels=cfg.preprocess.channels)
     # create a pool of workers
     pool = multiprocessing.Pool()
     # load chunks
     chunks = flatmap(pool, chunk_load, audios)
     chunks = enumerate(chunks)
     # The map function will not be evaluated until we iterate over it
-    processed_samples = map(partial(process_audio_array, env=env, sample_rate = args.sample_rate, channels=args.channels), chunks)
+    processed_samples = map(partial(process_audio_array, env=env, sample_rate = cfg.preprocess.sample_rate, channels=cfg.preprocess.channels), chunks)
     
     # Evaluate the generator
     pbar = tqdm(processed_samples)
     n_seconds = 0
     for audio_id in pbar:
-        n_seconds = (args.num_signal) / args.sample_rate * (audio_id + 1)
+        n_seconds = (cfg.preprocess.num_signal) / cfg.preprocess.sample_rate * (audio_id + 1)
         pbar.set_description(
             f'Current dataset length: {timedelta(seconds=n_seconds)}')
     pbar.close()
 
     with open(os.path.join(
-            args.output_path,
+            cfg.preprocess.output_path,
             'metadata.yaml',
     ), 'w') as metadata:
-        yaml.safe_dump({'channels': args.channels, 'n_seconds': n_seconds, 'sr': args.sample_rate}, metadata)
+        yaml.safe_dump({'channels': cfg.preprocess.channels, 'n_seconds': n_seconds, 'sr': cfg.preprocess.sample_rate}, metadata)
     pool.close()
     env.close()
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()

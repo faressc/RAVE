@@ -8,6 +8,7 @@ lightning_logs/
 *.txt
 runs
 *.npy
+*.log
 #*.yaml
 *.onnx
 __version__*
@@ -16,3 +17,4 @@ PKG-INFO
 venv/
 data/
 model/
+outputs/

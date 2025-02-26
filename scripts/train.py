@@ -4,9 +4,10 @@ import sys
 from typing import Any, Dict
 
 import gin
+import hydra
+from hydra import compose, initialize
 import pytorch_lightning as pl
 import torch
-from absl import flags, app
 from torch.utils.data import DataLoader
 
 try:
@@ -20,66 +21,6 @@ import rave
 import rave.core
 import rave.dataset
 from rave.transforms import get_augmentations, add_augmentation
-
-
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string('name', None, help='Name of the run', required=True)
-flags.DEFINE_multi_string('config',
-                          default='v2.gin',
-                          help='RAVE configuration to use')
-flags.DEFINE_multi_string('augment',
-                           default = [],
-                            help = 'augmentation configurations to use')
-flags.DEFINE_string('db_path',
-                    None,
-                    help='Preprocessed dataset path',
-                    required=True)
-flags.DEFINE_string('out_path',
-                    default="runs/",
-                    help='Output folder')
-flags.DEFINE_integer('max_steps',
-                     6000000,
-                     help='Maximum number of training steps')
-flags.DEFINE_integer('val_every', 10000, help='Checkpoint model every n steps')
-flags.DEFINE_integer('save_every',
-                     500000,
-                     help='save every n steps (default: just last)')
-flags.DEFINE_integer('n_signal',
-                     131072,
-                     help='Number of audio samples to use during training')
-flags.DEFINE_integer('channels',
-                     None,
-                     help="number of audio channels",
-                    required=True)
-flags.DEFINE_integer('batch', 8, help='Batch size')
-flags.DEFINE_string('ckpt',
-                    None,
-                    help='Path to previous checkpoint of the run')
-flags.DEFINE_multi_string('override', default=[], help='Override gin binding')
-flags.DEFINE_integer('workers',
-                     default=8,
-                     help='Number of workers to spawn for dataset loading')
-flags.DEFINE_multi_integer('gpu', default=None, help='GPU to use')
-flags.DEFINE_bool('derivative',
-                  default=False,
-                  help='Train RAVE on the derivative of the signal')
-flags.DEFINE_bool('normalize',
-                  default=False,
-                  help='Train RAVE on normalized signals')
-flags.DEFINE_list('rand_pitch',
-                  default=None,
-                  help='activates random pitch')
-flags.DEFINE_float('ema',
-                   default=None,
-                   help='Exponential weight averaging factor (optional)')
-flags.DEFINE_bool('progress',
-                  default=True,
-                  help='Display training progress bar')
-flags.DEFINE_bool('smoke_test', 
-                  default=False,
-                  help="Run training with n_batches=1 to test the model")
-
 
 class EMA(pl.Callback):
 
@@ -142,99 +83,100 @@ def parse_augmentations(augmentations):
         gin.clear_config()
     return get_augmentations()
 
-def main(argv):
+@hydra.main(config_path="../conf", config_name="config")
+def main(cfg):
     torch.set_float32_matmul_precision('high')
     torch.backends.cudnn.benchmark = True
 
     # parse augmentations (note: this function clears previous gin registration)
-    augmentations = parse_augmentations(map(add_gin_extension, FLAGS.augment))
+    augmentations = parse_augmentations(map(add_gin_extension, cfg.train.augment))
 
     # get number of channels
-    n_channels = rave.dataset.get_training_channels(FLAGS.db_path, FLAGS.channels)
+    n_channels = rave.dataset.get_training_channels(cfg.train.db_path, cfg.train.channels)
 
     # list to bind all configs at once (otherwise n_channels is not available)
     extra_bindings = [
     f"dataset.get_dataset.augmentations={augmentations}",
-    f"model.RAVE.n_channels={rave.dataset.get_training_channels(FLAGS.db_path, FLAGS.channels)}"]
+    f"model.RAVE.n_channels={rave.dataset.get_training_channels(cfg.train.db_path, cfg.train.channels)}",]
 
     # parse configuration
-    if FLAGS.ckpt:
+    if (cfg.train.ckpt):
         # load config from checkpoint
-        config_file = rave.core.search_for_config(FLAGS.ckpt)
+        config_file = rave.core.search_for_config(cfg.train.ckpt)
         if config_file is None:
-            print('Config file not found in %s'%FLAGS.run)
+            print('Config file not found in %s'%cfg.train.name)
         gin.parse_config_file(config_file)
     else:
-        # create new config from FLAGS
+        # create new config from cfg.train
         gin.parse_config_files_and_bindings(
-            map(add_gin_extension, FLAGS.config),
-            extra_bindings + FLAGS.override,
+            map(add_gin_extension, cfg.train.config),
+            extra_bindings + list(cfg.train.override),
         )
         
     # create model
     model = rave.RAVE()
-    if FLAGS.derivative:
+    if cfg.train.derivative:
         model.integrator = rave.dataset.get_derivator_integrator(model.sr)[1]
 
     # parse datasset
-    dataset = rave.dataset.get_dataset(FLAGS.db_path,
+    dataset = rave.dataset.get_dataset(cfg.train.db_path,
                                        model.sr,
-                                       FLAGS.n_signal,
-                                       derivative=FLAGS.derivative,
-                                       normalize=FLAGS.normalize,
-                                       rand_pitch=FLAGS.rand_pitch,
-                                       n_channels=n_channels)
+                                       cfg.train.n_signal,
+                                       derivative=cfg.train.derivative,
+                                       normalize=cfg.train.normalize,
+                                       rand_pitch=cfg.train.rand_pitch,
+                                       n_channels=cfg.train.channels)
     train, val = rave.dataset.split_dataset(dataset, 98)
 
     # get data-loader
-    num_workers = FLAGS.workers
+    num_workers = cfg.train.workers
     if os.name == "nt" or sys.platform == "darwin":
         num_workers = 0
     train = DataLoader(train,
-                       FLAGS.batch,
+                       cfg.train.batch,
                        True,
                        drop_last=True,
                        num_workers=num_workers)
-    val = DataLoader(val, FLAGS.batch, False, num_workers=num_workers)
+    val = DataLoader(val, cfg.train.batch, False, num_workers=num_workers)
 
     # CHECKPOINT CALLBACKS
     validation_checkpoint = pl.callbacks.ModelCheckpoint(monitor="validation",
                                                          filename="best")
-    last_filename = "last" if FLAGS.save_every is None else "epoch-{epoch:04d}"                                                        
-    last_checkpoint = rave.core.ModelCheckpoint(filename=last_filename, step_period=FLAGS.save_every)
+    last_filename = "last" if cfg.train.save_every is None else "epoch-{epoch:04d}"                                                        
+    last_checkpoint = rave.core.ModelCheckpoint(filename=last_filename, step_period=cfg.train.save_every)
 
     val_check = {}
-    if len(train) >= FLAGS.val_every:
-        val_check["val_check_interval"] = 1 if FLAGS.smoke_test else FLAGS.val_every
+    if len(train) >= cfg.train.val_every:
+        val_check["val_check_interval"] = 1 if cfg.train.smoke_test else cfg.train.val_every
     else:
-        nepoch = FLAGS.val_every // len(train)
+        nepoch = cfg.train.val_every // len(train)
         val_check["check_val_every_n_epoch"] = nepoch
 
-    if FLAGS.smoke_test:
+    if cfg.train.smoke_test:
         val_check['limit_train_batches'] = 1
         val_check['limit_val_batches'] = 1
 
     gin_hash = hashlib.md5(
         gin.operative_config_str().encode()).hexdigest()[:10]
 
-    RUN_NAME = f'{FLAGS.name}'#_{gin_hash}'
+    RUN_NAME = f'{cfg.train.name}'#_{gin_hash}'
 
-    os.makedirs(os.path.join(FLAGS.out_path, RUN_NAME), exist_ok=True)
+    os.makedirs(os.path.join(cfg.train.out_path, RUN_NAME), exist_ok=True)
 
-    if FLAGS.gpu == [-1]:
+    if cfg.train.gpu == -1:
         gpu = 0
     else:
-        gpu = FLAGS.gpu or rave.core.setup_gpu()
+        gpu = cfg.train.sgpu or rave.core.setup_gpu()
 
     print('selected gpu:', gpu)
 
     accelerator = None
     devices = None
-    if FLAGS.gpu == [-1]:
+    if cfg.train.gpu == -1:
         pass
     elif torch.cuda.is_available():
         accelerator = "cuda"
-        devices = FLAGS.gpu or rave.core.setup_gpu()
+        devices = cfg.train.gpu or rave.core.setup_gpu()
     elif torch.backends.mps.is_available():
         print(
             "Training on mac is not available yet. Use --gpu -1 to train on CPU (not recommended)."
@@ -252,25 +194,25 @@ def main(argv):
         rave.model.BetaWarmupCallback(),
     ]
 
-    if FLAGS.ema is not None:
-        callbacks.append(EMA(FLAGS.ema))
+    if cfg.train.ema is not None:
+        callbacks.append(EMA(cfg.train.ema))
 
     trainer = pl.Trainer(
         logger=pl.loggers.TensorBoardLogger(
-            FLAGS.out_path,
+            cfg.train.out_path,
             name=RUN_NAME,
         ),
         accelerator=accelerator,
         devices=devices,
         callbacks=callbacks,
         max_epochs=300000,
-        max_steps=FLAGS.max_steps,
+        max_steps=cfg.train.max_steps,
         profiler="simple",
-        enable_progress_bar=FLAGS.progress,
+        enable_progress_bar=cfg.train.progress,
         **val_check,
     )
 
-    run = rave.core.search_for_run(FLAGS.ckpt)
+    run = rave.core.search_for_run(cfg.train.ckpt)
     if run is not None:
         print('loading state from file %s'%run)
         loaded = torch.load(run, map_location='cpu')
@@ -278,11 +220,11 @@ def main(argv):
         trainer.fit_loop.epoch_loop._batches_that_stepped = loaded['global_step']
         # model = model.load_state_dict(loaded['state_dict'])
     
-    with open(os.path.join(FLAGS.out_path, RUN_NAME, "config.gin"), "w") as config_out:
+    with open(os.path.join(cfg.train.out_path, RUN_NAME, "config.gin"), "w") as config_out:
         config_out.write(gin.operative_config_str())
 
     trainer.fit(model, train, val, ckpt_path=run)
 
 
 if __name__ == "__main__": 
-    app.run(main)
+    main()

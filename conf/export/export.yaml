@@ -1,0 +1,9 @@
+run: models/checkpoints/test
+streaming: True
+fidelity: 0.999
+name: test
+output: models/exports
+ema_weights: False
+channels: null
+sr: null
+prior: null

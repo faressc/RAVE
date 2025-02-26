@@ -1,33 +1,13 @@
 stages:
   preprocess:
-    cmd: >
-      python3 scripts/preprocess.py  
-      --input_path ${preprocess.input_path} 
-      --output_path ${preprocess.output_path} 
-      --num_signal ${preprocess.num_signal}  
-      --sample_rate ${preprocess.sample_rate}
-      --channels ${preprocess.channels}
+    cmd: python3 scripts/preprocess.py hydra/job_logging=disabled hydra/hydra_logging=disabled
     deps:
       - scripts/preprocess.py
       - data/raw/
     outs:
       - data/processed/
   train:
-    cmd: >
-      python3 scripts/train.py
-      --name ${train.name}
-      --db_path ${train.db_path}
-      --out_path ${train.out_path}
-      --max_steps ${train.max_steps}
-      --val_every ${train.val_every}
-      --save_every ${train.save_every}
-      --channels ${train.channels}
-      --batch ${train.batch}
-      --workers ${train.workers}
-      --gpu ${train.gpu}
-      --derivative ${train.derivative}
-      --normalize ${train.normalize}
-      --smoke_test ${train.smoke_test}
+    cmd: python3 scripts/train.py hydra/job_logging=disabled hydra/hydra_logging=disabled
     deps:
       - scripts/train.py
       - rave/
@@ -35,13 +15,7 @@ stages:
     outs:
       - models/checkpoints/
   export:
-    cmd: >
-      python scripts/export.py
-      --run ${export.run}
-      --streaming ${export.streaming}
-      --fidelity ${export.fidelity}
-      --name ${export.name}
-      --output ${export.output}
+    cmd: python scripts/export.py hydra/job_logging=disabled hydra/hydra_logging=disabled
     deps:
       - scripts/export.py
       - models/checkpoints/

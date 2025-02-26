@@ -1,0 +1,7 @@
+input_path: data/raw
+output_path: data/processed
+num_signal: ${N_SIGNAL}
+sample_rate: ${SAMPLING_RATE}
+channels: ${N_CHANNELS}
+max_db_size: 100
+ext: ["aif", "aiff", "wav", "opus", "mp3", "aac", "flac", "ogg"]

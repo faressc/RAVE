@@ -14,11 +14,11 @@ torch.set_grad_enabled(False)
 
 import cached_conv as cc
 import gin
+import hydra
 import nn_tilde
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-from absl import flags, app
 from typing import Union, Optional
 
 try:
@@ -31,42 +31,6 @@ import rave.blocks
 import rave.core
 import rave.resampler
 from rave.prior import model as prior
-
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string('run',
-                    default=None,
-                    help='Path to the run to export',
-                    required=True)
-flags.DEFINE_bool('streaming',
-                  default=False,
-                  help='Enable the model streaming mode')
-flags.DEFINE_float(
-    'fidelity',
-    default=.95,
-    lower_bound=.1,
-    upper_bound=.999,
-    help='Fidelity to use during inference (Variational mode only)')
-
-flags.DEFINE_string('name', 
-                     default= None,
-                     help = "custom name for the scripted model (default: run name)")
-flags.DEFINE_string('output', 
-                     default= None,
-                     help = "output location of scripted model")
-flags.DEFINE_bool('ema_weights',
-                  default=False,
-                  help='Use ema weights if avaiable')
-flags.DEFINE_integer('channels',
-                     default=None,
-                     help = "number of out channels for export")
-flags.DEFINE_integer('sr',
-                     default=None,
-                     help='Optional resampling sample rate')
-flags.DEFINE_string('prior', 
-                    default=None,
-                    help = "path to prior (optional)")
-
 
 class DumbPrior(nn.Module):
     def forward(self, x: torch.Tensor):
@@ -488,23 +452,23 @@ def get_state_dict(RUN, PRIOR):
     return state_dict
 
 
-
-def main(argv):
-    cc.use_cached_conv(FLAGS.streaming)
+@hydra.main(config_path="../conf", config_name="config")
+def main(cfg):
+    cc.use_cached_conv(cfg.export.streaming)
 
     logging.info("building rave")
 
-    config_file = rave.core.search_for_config(FLAGS.run)
+    config_file = rave.core.search_for_config(cfg.export.run)
     if config_file is None:
-        print('Config file not found in %s'%FLAGS.run)
+        print('Config file not found in %s'%cfg.export.run)
     gin.parse_config_file(config_file)
-    FLAGS.run = rave.core.search_for_run(FLAGS.run)
+    cfg.export.run = rave.core.search_for_run(cfg.export.run)
 
     pretrained = rave.RAVE()
-    if FLAGS.run is not None:
-        logging.info('model found : %s'%FLAGS.run)
-        checkpoint = torch.load(FLAGS.run, map_location='cpu')
-        if FLAGS.ema_weights and "EMA" in checkpoint["callbacks"]:
+    if cfg.export.run is not None:
+        logging.info('model found : %s'%cfg.export.run)
+        checkpoint = torch.load(cfg.export.run, map_location='cpu')
+        if cfg.export.ema_weights and "EMA" in checkpoint["callbacks"]:
             pretrained.load_state_dict(
                 checkpoint["callbacks"]["EMA"],
                 strict=False,
@@ -541,16 +505,16 @@ def main(argv):
 
     # parse prior
     prior_scripted=None
-    if FLAGS.prior is not None:
+    if cfg.export.prior is not None:
         logging.info("loading prior from checkpoint")
-        prior_config_file = rave.core.search_for_config(FLAGS.prior)
+        prior_config_file = rave.core.search_for_config(cfg.export.prior)
         if prior_config_file is None:
-            print('Config file for prior not found in %s'%FLAGS.prior)
+            print('Config file for prior not found in %s'%cfg.export.prior)
         else:
             gin.clear_config()
             logging.info("prior config file : ", prior_config_file)
             gin.parse_config_file(prior_config_file)
-            PRIOR = rave.core.search_for_run(FLAGS.prior)
+            PRIOR = rave.core.search_for_run(cfg.export.prior)
             logging.info(f"using prior model at {PRIOR}")
             prior_class = get_prior_class_from_config()
             prior_pretrained = getattr(prior, prior_class)(pretrained_vae=pretrained, n_channels=pretrained.n_channels)
@@ -565,18 +529,18 @@ def main(argv):
     logging.info("script model")
     scripted_rave = script_class(
         pretrained=pretrained,
-        channels = FLAGS.channels,
-        fidelity=FLAGS.fidelity,
-        target_sr=FLAGS.sr,
+        channels = cfg.export.channels,
+        fidelity=cfg.export.fidelity,
+        target_sr=cfg.export.sr,
         prior = prior_scripted
     )
     z = scripted_rave.encode(x)
     x = scripted_rave.decode(z)
 
     logging.info("save model")
-    output = FLAGS.output or os.path.dirname(FLAGS.run)
-    model_name = FLAGS.name or FLAGS.run.split(os.sep)[-4]
-    if FLAGS.streaming:
+    output = cfg.export.output or os.path.dirname(cfg.export.run)
+    model_name = cfg.export.name or cfg.export.run.split(os.sep)[-4]
+    if cfg.export.streaming:
         model_name += "_streaming"
     model_name += ".ts"
 
@@ -600,4 +564,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    app.run(main)
+    main()
