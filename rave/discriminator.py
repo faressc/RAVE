@@ -125,7 +125,7 @@ class MultiScaleDiscriminator(nn.Module):
         super().__init__()
         layers = []
         for i in range(n_discriminators):
-            layers.append(convnet(in_size=n_channels))
+            layers.append(convnet)
         self.layers = nn.ModuleList(layers)
 
     def forward(self, x):

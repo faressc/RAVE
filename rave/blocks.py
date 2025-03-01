@@ -1,18 +1,26 @@
 from functools import partial
 from typing import Callable, Optional, Sequence, Union
+import os
+import sys
 
 import cached_conv as cc
-import gin
+from hydra.utils import instantiate
+from hydra import compose, initialize
+from hydra.core.global_hydra import GlobalHydra
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.utils import weight_norm
 from torchaudio.transforms import Spectrogram
+from omegaconf import OmegaConf
 
 from .core import amp_to_impulse_response, fft_convolve, mod_sigmoid
 
+# For global hydra config
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+from train import cfg
 
-@gin.configurable
+# @gin.configurable
 def normalization(module: nn.Module, mode: str = 'identity'):
     if mode == 'identity':
         return module
@@ -143,7 +151,7 @@ class ResidualBlock(nn.Module):
         return self.net(x)
 
 
-@gin.configurable
+# @gin.configurable
 class ResidualStack(nn.Module):
 
     def __init__(self,
@@ -195,7 +203,7 @@ class UpsampleLayer(nn.Module):
         return self.net(x)
 
 
-@gin.configurable
+# @gin.configurable
 class NoiseGenerator(nn.Module):
 
     def __init__(self, in_size, data_size, ratios, noise_bands):
@@ -329,6 +337,8 @@ class Generator(nn.Module):
         ratios,
         loud_stride,
         use_noise,
+        # residual_stack,
+        # noise_gen,
         n_channels: int = 1,
         recurrent_layer: Optional[Callable[[], nn.Module]] = None,
     ):
@@ -361,9 +371,10 @@ class Generator(nn.Module):
                     r,
                     cumulative_delay=net[-1].cumulative_delay,
                 ))
-            net.append(
-                ResidualStack(out_dim,
-                              cumulative_delay=net[-1].cumulative_delay))
+            residual_stack = instantiate(cfg.model.blocks.ResidualStack ,dim=out_dim, cumulative_delay=net[-1].cumulative_delay)
+            net.append(residual_stack)
+                # ResidualStack(out_dim,
+                #               cumulative_delay=net[-1].cumulative_delay))
 
         self.net = cc.CachedSequential(*net)
 
@@ -382,7 +393,7 @@ class Generator(nn.Module):
         branches = [wave_gen, loud_gen]
 
         if use_noise:
-            noise_gen = NoiseGenerator(out_dim, data_size * n_channels)
+            noise_gen = instantiate(cfg.model.blocks.NoiseGenerator, in_size=out_dim, data_size=data_size * n_channels,)
             branches.append(noise_gen)
 
         self.synth = cc.AlignBranches(
@@ -718,7 +729,7 @@ class VariationalEncoder(nn.Module):
 
     def __init__(self, encoder, beta: float = 1.0, n_channels=1):
         super().__init__()
-        self.encoder = encoder(n_channels=n_channels)
+        self.encoder = encoder
         self.beta = beta
         self.register_buffer("warmed_up", torch.tensor(0))
 

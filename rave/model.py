@@ -2,7 +2,7 @@ import math
 from time import time
 from typing import Callable, Optional, Iterable, Dict
 
-import gin, pdb
+import pdb
 import numpy as np
 import pytorch_lightning as pl
 import torch
@@ -11,6 +11,7 @@ from einops import rearrange
 from sklearn.decomposition import PCA
 from pytorch_lightning.trainer.states import RunningStage
 
+from omegaconf import OmegaConf, DictConfig
 
 import rave.core
 
@@ -75,7 +76,7 @@ class QuantizeCallback(WarmupCallback):
         self.state['training_steps'] += 1
 
 
-@gin.configurable
+# @gin.configurable
 class BetaWarmupCallback(pl.Callback):
 
     def __init__(self, initial_value: float = .2,
@@ -130,7 +131,7 @@ def _pqmf_decode(pqmf, x: torch.Tensor, batch_size: Iterable[int], n_channels: i
     return x
 
 
-@gin.configurable
+# @gin.configurable
 class RAVE(pl.LightningModule):
 
     def __init__(
@@ -162,10 +163,11 @@ class RAVE(pl.LightningModule):
         enable_pqmf_encode: Optional[bool] = None,
         enable_pqmf_decode: Optional[bool] = None,
         is_mel_input: Optional[bool] = None,
-        loss_weights = None
+        loss_weights = None,
+
     ):
         super().__init__()
-        self.pqmf = pqmf(n_channels=n_channels)
+        self.pqmf = pqmf
         self.spectrogram = None
         if spectrogram is not None:
             self.spectrogram = spectrogram
@@ -184,12 +186,12 @@ class RAVE(pl.LightningModule):
         assert weights is not None, "RAVE model requires either weights or loss_weights (depreciated) keyword"
 
         # setup model
-        self.encoder = encoder(n_channels=n_channels)
-        self.decoder = decoder(n_channels=n_channels)
-        self.discriminator = discriminator(n_channels=n_channels)
+        self.encoder = encoder
+        self.decoder = decoder
+        self.discriminator = discriminator
 
-        self.audio_distance = audio_distance()
-        self.multiband_audio_distance = multiband_audio_distance()
+        self.audio_distance = audio_distance
+        self.multiband_audio_distance = multiband_audio_distance
 
         self.gan_loss = gan_loss
 
@@ -497,11 +499,11 @@ class RAVE(pl.LightningModule):
     def on_fit_start(self):
         tb = self.logger.experiment
 
-        config = gin.operative_config_str()
-        config = config.split('\n')
-        config = ['```'] + config + ['```']
-        config = '\n'.join(config)
-        tb.add_text("config", config)
+        # config = gin.operative_config_str()
+        # config = config.split('\n')
+        # config = ['```'] + config + ['```']
+        # config = '\n'.join(config)
+        # tb.add_text("config", config)
 
         model = str(self)
         model = model.split('\n')

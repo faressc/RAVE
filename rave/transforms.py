@@ -1,7 +1,7 @@
 from random import choice, randint, random, randrange
 import bisect
 import torchaudio
-import gin.torch
+# import gin.torch
 from typing import Tuple
 import librosa as li
 import numpy as np
@@ -111,7 +111,7 @@ class Dequantize(Transform):
         return x
 
 
-@gin.configurable
+# @gin.configurable
 class Compress(Transform):
     def __init__(self, time="0.1,0.1", lookup="6:-70,-60,-20 ", gain="0", sr=44100):
         self.sox_args = ['compand', time, lookup, gain]
@@ -121,7 +121,7 @@ class Compress(Transform):
         x = torchaudio.sox_effects.apply_effects_tensor(torch.from_numpy(x).float(), self.sr, [self.sox_args])[0].numpy()
         return x
 
-@gin.configurable
+# @gin.configurable
 class RandomCompress(Transform):
     def __init__(self, threshold = -40, amp_range = [-60, 0], attack=0.1, release=0.1, prob=0.8, sr=44100):
         assert prob >= 0. and prob <= 1., "prob must be between 0. and 1."
@@ -144,7 +144,7 @@ class RandomCompress(Transform):
         else:
             return x
 
-@gin.configurable
+# @gin.configurable
 class RandomGain(Transform):
     def __init__(self, gain_range: Tuple[int, int] = [-6, 3], prob: float = 0.5, limit = True):
         assert prob >= 0. and prob <= 1., "prob must be between 0. and 1."
@@ -165,7 +165,7 @@ class RandomGain(Transform):
             return x
 
 
-@gin.configurable
+# @gin.configurable
 class RandomMute(Transform):
     def __init__(self, prob: torch.Tensor = 0.1):
         assert prob >= 0. and prob <= 1., "prob must be between 0. and 1."
@@ -177,7 +177,7 @@ class RandomMute(Transform):
         return x * mask
 
 
-@gin.configurable
+# @gin.configurable
 class FrequencyMasking(Transform):
     def __init__(self, prob = 0.5, max_size: int = 80):
         self.prob = prob
@@ -201,7 +201,7 @@ class FrequencyMasking(Transform):
 
 _augmentations = []
 
-@gin.configurable()
+# @gin.configurable()
 def add_augmentation(aug):
     global _augmentations
     _augmentations.append(aug)

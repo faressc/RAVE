@@ -16,5 +16,6 @@ PKG-INFO
 .junit-test-report.xml
 venv/
 data/
-model/
+models/
 outputs/
+!conf/model

@@ -20,6 +20,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Union, Optional
+from hydra.core.global_hydra import GlobalHydra
 
 try:
     import rave
@@ -564,4 +565,5 @@ def main(cfg):
 
 
 if __name__ == "__main__":
+    GlobalHydra.instance().clear()
     main()

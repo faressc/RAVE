@@ -2,13 +2,20 @@ import hashlib
 import os
 import sys
 from typing import Any, Dict
+import copy
 
-import gin
+# import gin
 import hydra
 from hydra import compose, initialize
+from hydra.utils import instantiate
+from hydra.core.global_hydra import GlobalHydra
+from hydra._internal.hydra import Hydra
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader
+from omegaconf import OmegaConf
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 try:
     import rave
@@ -21,6 +28,12 @@ import rave
 import rave.core
 import rave.dataset
 from rave.transforms import get_augmentations, add_augmentation
+
+# Clear and initialize global hydra config
+GlobalHydra.instance().clear()
+config_path = '../conf'
+initialize(config_path=config_path)
+cfg = compose(config_name="config")
 
 class EMA(pl.Callback):
 
@@ -63,58 +76,14 @@ class EMA(pl.Callback):
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         self.weights.update(state_dict)
 
-def add_gin_extension(config_name: str) -> str:
-    '''Add .gin extension to the config file name if it is not present'''
-    if config_name[-4:] != '.gin':
-        config_name += '.gin'
-    return config_name
-
-def parse_augmentations(augmentations):
-    '''Parse augmentation .gin files from config/augmentations for a given list of augmentation gin file names.
-    Clears the gin configuration after parsing each augmentation.
-    Args:
-        augmentations: list of augmentation gin file names
-    Returns:
-        global list of augmentation configurations
-    '''
-    for a in augmentations:
-        gin.parse_config_file(a)
-        add_augmentation()
-        gin.clear_config()
-    return get_augmentations()
-
-@hydra.main(config_path="../conf", config_name="config")
-def main(cfg):
+# @hydra.main(config_path="../conf", config_name="config")
+def main():
     torch.set_float32_matmul_precision('high')
     torch.backends.cudnn.benchmark = True
 
-    # parse augmentations (note: this function clears previous gin registration)
-    augmentations = parse_augmentations(map(add_gin_extension, cfg.train.augment))
-
-    # get number of channels
-    n_channels = rave.dataset.get_training_channels(cfg.train.db_path, cfg.train.channels)
-
-    # list to bind all configs at once (otherwise n_channels is not available)
-    extra_bindings = [
-    f"dataset.get_dataset.augmentations={augmentations}",
-    f"model.RAVE.n_channels={rave.dataset.get_training_channels(cfg.train.db_path, cfg.train.channels)}",]
-
-    # parse configuration
-    if (cfg.train.ckpt):
-        # load config from checkpoint
-        config_file = rave.core.search_for_config(cfg.train.ckpt)
-        if config_file is None:
-            print('Config file not found in %s'%cfg.train.name)
-        gin.parse_config_file(config_file)
-    else:
-        # create new config from cfg.train
-        gin.parse_config_files_and_bindings(
-            map(add_gin_extension, cfg.train.config),
-            extra_bindings + list(cfg.train.override),
-        )
-        
     # create model
-    model = rave.RAVE()
+    model = instantiate(cfg.model.rave.RAVE, _recursive_=True)
+
     if cfg.train.derivative:
         model.integrator = rave.dataset.get_derivator_integrator(model.sr)[1]
 
@@ -156,8 +125,8 @@ def main(cfg):
         val_check['limit_train_batches'] = 1
         val_check['limit_val_batches'] = 1
 
-    gin_hash = hashlib.md5(
-        gin.operative_config_str().encode()).hexdigest()[:10]
+    # gin_hash = hashlib.md5(
+    #     gin.operative_config_str().encode()).hexdigest()[:10]
 
     RUN_NAME = f'{cfg.train.name}'#_{gin_hash}'
 
@@ -191,7 +160,7 @@ def main(cfg):
         rave.model.WarmupCallback(),
         rave.model.QuantizeCallback(),
         # rave.core.LoggerCallback(rave.core.ProgressLogger(RUN_NAME)),
-        rave.model.BetaWarmupCallback(),
+        instantiate(cfg.model.rave.BetaWarmupCallback, _recursive_=True),
     ]
 
     if cfg.train.ema is not None:
@@ -220,11 +189,12 @@ def main(cfg):
         trainer.fit_loop.epoch_loop._batches_that_stepped = loaded['global_step']
         # model = model.load_state_dict(loaded['state_dict'])
     
-    with open(os.path.join(cfg.train.out_path, RUN_NAME, "config.gin"), "w") as config_out:
-        config_out.write(gin.operative_config_str())
+    # with open(os.path.join(cfg.train.out_path, RUN_NAME, "config.gin"), "w") as config_out:
+    #     config_out.write(gin.operative_config_str())
 
     trainer.fit(model, train, val, ckpt_path=run)
 
 
 if __name__ == "__main__": 
     main()
+    GlobalHydra.instance().clear()

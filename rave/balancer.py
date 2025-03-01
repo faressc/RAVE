@@ -2,7 +2,7 @@ import torch.nn as nn
 import gin.torch
 
 
-@gin.configurable
+# @gin.configurable
 class Balancer(nn.Module):
     def __init__(self):
         super().__init__(self)

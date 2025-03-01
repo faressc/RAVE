@@ -1,0 +1,308 @@
+preprocess:
+  input_path: data/raw
+  output_path: data/processed
+  num_signal: 131072
+  sample_rate: 44100
+  channels: 1
+  max_db_size: 100
+  ext:
+  - aif
+  - aiff
+  - wav
+  - opus
+  - mp3
+  - aac
+  - flac
+  - ogg
+model:
+  SAMPLING_RATE: 44100
+  CAPACITY: 64
+  N_BAND: 16
+  LATENT_SIZE: 16
+  RATIOS:
+  - 4
+  - 4
+  - 4
+  - 2
+  PHASE_1_DURATION: 1000000
+  core:
+    AudioDistanceV1:
+      _target_: rave.core.AudioDistanceV1
+      multiscale_stft:
+        _target_: rave.core.MultiScaleSTFT
+        _partial_: true
+        scales:
+        - 2048
+        - 1024
+        - 512
+        - 256
+        - 128
+        sample_rate: 44100
+        magnitude: true
+      log_epsilon: 1.0e-07
+    MultiScaleSTFT:
+      _target_: rave.core.MultiScaleSTFT
+      _partial_: true
+      scales:
+      - 2048
+      - 1024
+      - 512
+      - 256
+      - 128
+      sample_rate: 44100
+      magnitude: true
+  dataset:
+    split_dataset:
+      max_residual: 1000
+  cc:
+    Conv1d:
+      _target_: torch.nn.Conv1d
+      bias: false
+    ConvTranspose1d:
+      _target_: torch.nn.ConvTranspose1d
+      bias: false
+  pqmf:
+    CachedPQMF:
+      _target_: rave.pqmf.CachedPQMF
+      attenuation: 100
+      n_band: 16
+      n_channels: 1
+  blocks:
+    normalization:
+      mode: weight_norm
+    Encoder:
+      _target_: rave.blocks.Encoder
+      data_size: 16
+      capacity: 64
+      latent_size: 16
+      ratios:
+      - 4
+      - 4
+      - 4
+      - 2
+      sample_norm: false
+      repeat_layers: 1
+      n_channels: 1
+    VariationalEncoder:
+      _target_: rave.blocks.VariationalEncoder
+      encoder:
+        _target_: rave.blocks.Encoder
+        data_size: 16
+        capacity: 64
+        latent_size: 16
+        ratios:
+        - 4
+        - 4
+        - 4
+        - 2
+        sample_norm: false
+        repeat_layers: 1
+        n_channels: 1
+        n_out: 2
+    Generator:
+      _target_: rave.blocks.Generator
+      latent_size: 16
+      capacity: 64
+      data_size: 16
+      ratios:
+      - 4
+      - 4
+      - 4
+      - 2
+      n_channels: 1
+      loud_stride: 1
+      use_noise: true
+    ResidualStack:
+      _target_: rave.blocks.ResidualStack
+      kernel_sizes:
+      - 3
+      dilations_list:
+      - - 1
+        - 1
+      - - 3
+        - 1
+      - - 5
+        - 1
+    NoiseGenerator:
+      _target_: rave.blocks.NoiseGenerator
+      ratios:
+      - 4
+      - 4
+      - 4
+      noise_bands: 5
+  discriminator:
+    ConvNet:
+      _target_: rave.discriminator.ConvNet
+      in_size: 1
+      out_size: 1
+      capacity: 64
+      n_layers: 4
+      stride: 4
+    MultiScaleDiscriminator:
+      _target_: rave.discriminator.MultiScaleDiscriminator
+      n_discriminators: 3
+      convnet:
+        _target_: rave.discriminator.ConvNet
+        in_size: 1
+        out_size: 1
+        capacity: 64
+        n_layers: 4
+        stride: 4
+        conv:
+          _target_: torch.nn.Conv1d
+          _partial_: true
+        kernel_size: 15
+  scales:
+    discriminator:
+      ConvNet:
+        _target_: rave.discriminator.ConvNet
+        in_size: 1
+        out_size: 1
+        capacity: 64
+        n_layers: 4
+        stride: 4
+        conv:
+          _target_: torch.nn.Conv1d
+          _partial_: true
+        kernel_size: 15
+  feature_matching:
+    core:
+      mean_difference:
+        _target_: rave.core.mean_difference
+        _partial_: true
+        norm: L1
+  rave:
+    RAVE:
+      _target_: rave.RAVE
+      latent_size: 16
+      pqmf:
+        _target_: rave.pqmf.CachedPQMF
+        attenuation: 100
+        n_band: 16
+        n_channels: 1
+      sampling_rate: 44100
+      n_channels: 1
+      encoder:
+        _target_: rave.blocks.VariationalEncoder
+        encoder:
+          _target_: rave.blocks.Encoder
+          data_size: 16
+          capacity: 64
+          latent_size: 16
+          ratios:
+          - 4
+          - 4
+          - 4
+          - 2
+          sample_norm: false
+          repeat_layers: 1
+          n_channels: 1
+          n_out: 2
+      decoder:
+        _target_: rave.blocks.Generator
+        latent_size: 16
+        capacity: 64
+        data_size: 16
+        ratios:
+        - 4
+        - 4
+        - 4
+        - 2
+        n_channels: 1
+        loud_stride: 1
+        use_noise: true
+      discriminator:
+        _target_: rave.discriminator.MultiScaleDiscriminator
+        n_discriminators: 3
+        convnet:
+          _target_: rave.discriminator.ConvNet
+          in_size: 1
+          out_size: 1
+          capacity: 64
+          n_layers: 4
+          stride: 4
+          conv:
+            _target_: torch.nn.Conv1d
+            _partial_: true
+          kernel_size: 15
+      phase_1_duration: 1000000
+      gan_loss:
+        _target_: rave.core.hinge_gan
+        _partial_: true
+      valid_signal_crop: false
+      feature_matching_fun:
+        _target_: rave.core.mean_difference
+        _partial_: true
+        norm: L1
+      num_skipped_features: 0
+      audio_distance:
+        _target_: rave.core.AudioDistanceV1
+        multiscale_stft:
+          _target_: rave.core.MultiScaleSTFT
+          _partial_: true
+          scales:
+          - 2048
+          - 1024
+          - 512
+          - 256
+          - 128
+          sample_rate: 44100
+          magnitude: true
+        log_epsilon: 1.0e-07
+      multiband_audio_distance:
+        _target_: rave.core.AudioDistanceV1
+        multiscale_stft:
+          _target_: rave.core.MultiScaleSTFT
+          _partial_: true
+          scales:
+          - 2048
+          - 1024
+          - 512
+          - 256
+          - 128
+          sample_rate: 44100
+          magnitude: true
+        log_epsilon: 1.0e-07
+      weights:
+        feature_matching: 10
+    BetaWarmupCallback:
+      _target_: rave.BetaWarmupCallback
+      initial_value: 0.1
+      target_value: 0.1
+      warmup_len: 1
+train:
+  name: test
+  config:
+  - v2
+  override: []
+  augment: []
+  db_path: data/processed
+  out_path: models/checkpoints
+  max_steps: 100
+  val_every: 10
+  save_every: 5000
+  n_signal: 131072
+  channels: 1
+  batch: 8
+  workers: 8
+  gpu: -1
+  derivative: 2
+  normalize: false
+  rand_pitch: null
+  ema: null
+  smoke_test: true
+  ckpt: null
+  progress: true
+export:
+  run: models/checkpoints/test
+  streaming: true
+  fidelity: 0.999
+  name: test
+  output: models/exports
+  ema_weights: false
+  channels: null
+  sr: null
+  prior: null
+SAMPLING_RATE: 44100
+N_CHANNELS: 1
+N_SIGNAL: 131072

@@ -130,7 +130,7 @@ def normalize_signal(x: np.ndarray, max_gain_db: int = 30):
 
     return x * gain
 
-@gin.configurable
+# @gin.configurable
 def get_dataset(db_path,
                 sr,
                 n_signal,
@@ -184,7 +184,7 @@ def get_dataset(db_path,
     )
 
 
-@gin.configurable
+# @gin.configurable
 def split_dataset(dataset, percent, max_residual: Optional[int] = None):
     split1 = max((percent * len(dataset)) // 100, 1)
     split2 = len(dataset) - split1
