@@ -93,24 +93,7 @@ def get_versions(folder):
     ckpts = map(str, Path(folder).rglob("version_*"))
     ckpts = filter(lambda x: os.path.isdir(x), ckpts)
     return sorted(Path(dirpath).iterdir(), key=os.path.getmtime)
-
-def search_for_config(folder):
-    if os.path.isfile(folder):
-        folder = os.path.dirname(folder)
-    configs = list(map(str, Path(folder).rglob("config.gin")))
-    if configs != []:
-        return os.path.abspath(os.path.join(folder, "config.gin"))
-    configs = list(map(str, Path(folder).rglob("../config.gin")))
-    if configs != []:
-        return os.path.abspath(os.path.join(folder, "../config.gin"))
-    configs = list(map(str, Path(folder).rglob("../../config.gin")))
-    if configs != []:
-        return os.path.abspath(os.path.join(folder, "../../config.gin"))
-    else:
-        return None
-
     
-
 def search_for_run(run_path, name=None):
     if run_path is None: return None
     if ".ckpt" in run_path: return run_path

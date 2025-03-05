@@ -6,19 +6,14 @@ import subprocess
 from random import random
 from typing import Dict, Iterable, Optional, Sequence, Union, Callable
 
-import gin
 import lmdb
 import numpy as np
-import requests
 import torch
-import torchaudio
 import yaml
 from scipy.signal import lfilter
 from torch.utils import data
 from tqdm import tqdm
-from . import transforms
-from udls import AudioExample as AudioExampleWrapper
-from udls.generated import AudioExample
+from proto.audio_example_pb2 import AudioExample
 
 
 def get_derivator_integrator(sr: int):
@@ -47,14 +42,12 @@ class AudioDataset(data.Dataset):
     def __init__(self,
                  db_path: str,
                  audio_key: str = 'waveform',
-                 transforms: Optional[transforms.Transform] = None, 
                  n_channels: int = 1) -> None:
         super().__init__()
         self._db_path = db_path
         self._audio_key = audio_key
         self._env = None
         self._keys = None
-        self._transforms = transforms
         self._n_channels = n_channels
         lens = []
         with self.env.begin() as txn:
@@ -77,9 +70,6 @@ class AudioDataset(data.Dataset):
         audio = audio.astype(np.float32) / (2**15 - 1)
         audio = audio.reshape(self._n_channels, -1)
 
-        if self._transforms is not None:
-            audio = self._transforms(audio)
-
         return audio
 
 def get_channels_from_dataset(db_path):
@@ -97,27 +87,6 @@ def get_training_channels(db_path, target_channels):
         print('[Warning] channels not found in dataset, taking 1 by default')
         n_channels = 1
     return n_channels
-
-class HTTPAudioDataset(data.Dataset):
-
-    def __init__(self, db_path: str):
-        super().__init__()
-        self.db_path = db_path
-        logging.info("starting remote dataset session")
-        self.length = int(requests.get("/".join([db_path, "len"])).text)
-        logging.info("connection established !")
-
-    def __len__(self):
-        return self.length
-
-    def __getitem__(self, index):
-        example = requests.get("/".join([
-            self.db_path,
-            "get",
-            f"{index}",
-        ])).text
-        example = AudioExampleWrapper(base64.b64decode(example)).get("audio")
-        return example.copy()
 
 
 def normalize_signal(x: np.ndarray, max_gain_db: int = 30):
@@ -146,40 +115,8 @@ def get_dataset(db_path,
 
     sr_dataset = metadata.get('sr', 44100)
 
-    transform_list = [
-        lambda x: x.astype(np.float32),
-        transforms.RandomCrop(n_signal),
-        transforms.RandomApply(
-            lambda x: random_phase_mangle(x, 20, 2000, .99, sr_dataset),
-            p=.8,
-        ),
-        transforms.Dequantize(16),
-    ]
-
-    if rand_pitch:
-        rand_pitch = list(map(float, rand_pitch))
-        assert len(rand_pitch) == 2, "rand_pitch must be given two floats"
-        transform_list.insert(1, transforms.RandomPitch(n_signal, rand_pitch))
-
-    if sr_dataset != sr:
-        transform_list.append(transforms.Resample(sr_dataset, sr))
-
-    if normalize:
-        transform_list.append(normalize_signal)
-
-    if derivative:
-        transform_list.append(get_derivator_integrator(sr)[0])
-
-    if augmentations:
-        transform_list.extend(augmentations)
-
-    transform_list.append(lambda x: x.astype(np.float32))
-
-    transform_list = transforms.Compose(transform_list)
-
     return AudioDataset(
         db_path,
-        transforms=transform_list,
         n_channels=n_channels
     )
 

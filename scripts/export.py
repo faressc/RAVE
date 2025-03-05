@@ -13,8 +13,6 @@ import torch
 torch.set_grad_enabled(False)
 
 import cached_conv as cc
-import gin
-import hydra
 import nn_tilde
 import numpy as np
 import torch.nn as nn
@@ -31,7 +29,6 @@ except:
     import rave
 import rave.blocks
 import rave.core
-import rave.resampler
 from rave.prior import model as prior
 
 class DumbPrior(nn.Module):
@@ -51,19 +48,15 @@ class ScriptedRAVE(nn_tilde.Module):
         self.pqmf = pretrained.pqmf
         self.sr = pretrained.sr
         self.spectrogram = pretrained.spectrogram
-        self.resampler = None
         self.input_mode = pretrained.input_mode
         self.output_mode = pretrained.output_mode
         self.n_channels = pretrained.n_channels
         self.target_channels = channels or self.n_channels
         self.stereo_mode = False
 
-        if target_sr is not None:
-            if target_sr != self.sr:
-                assert not target_sr % self.sr, "Incompatible target sampling rate"
-                self.resampler = rave.resampler.Resampler(target_sr, self.sr)
-                self.sr = target_sr
-
+        if target_sr != self.sr:
+            raise ValueError("target_sr is not the same as the model's sr")
+        
         self.full_latent_size = pretrained.latent_size
         self.is_using_adain = False
         for m in self.modules():
@@ -210,9 +203,6 @@ class ScriptedRAVE(nn_tilde.Module):
         if self.is_using_adain:
             self.update_adain()
 
-        if self.resampler is not None:
-            x = self.resampler.to_model_sampling_rate(x)
-
         batch_size = x.shape[:-2]
         if self.input_mode == "pqmf":
             x = x.reshape(-1, 1, x.shape[-1])
@@ -250,9 +240,6 @@ class ScriptedRAVE(nn_tilde.Module):
             y = y.reshape(y.shape[0] * self.n_channels, -1, y.shape[-1])
             y = self.pqmf.inverse(y)
             y = y.reshape(batch_size+(self.n_channels, -1))
-
-        if self.resampler is not None:
-            y = self.resampler.from_model_sampling_rate(y)
 
         # if (output-) padding is scrambled
         if y.shape[-1] > z.shape[-1] * self.decode_params[1]:
