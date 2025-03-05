@@ -345,7 +345,7 @@ export:
   output: models/exports
   ema_weights: false
   channels: null
-  sr: null
+  sr: 44100
   prior: null
 SAMPLING_RATE: 44100
 N_CHANNELS: 1

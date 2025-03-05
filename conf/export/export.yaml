@@ -5,5 +5,5 @@ name: test
 output: models/exports
 ema_weights: False
 channels: null
-sr: null
+sr: ${SAMPLING_RATE}
 prior: null

@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
-import gin
+# import gin
 from tqdm import tqdm
 import math
 import numpy as np
@@ -205,7 +205,7 @@ class Prior(pl.LightningModule):
 
 
 
-@gin.configurable
+# @gin.configurable
 class VariationalPrior(Prior):
 
     def post_process_latent(self, z):
