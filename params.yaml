@@ -56,11 +56,17 @@ model:
       max_residual: 1000
   cc:
     Conv1d:
-      _target_: torch.nn.Conv1d
+      _target_: cached_conv.Conv1d
+      _partial_: true
       bias: false
     ConvTranspose1d:
-      _target_: torch.nn.ConvTranspose1d
+      _target_: cached_conv.ConvTranspose1d
+      _partial_: true
       bias: false
+    get_padding:
+      _target_: cached_conv.get_padding
+      _partial_: true
+      mode: causal
   pqmf:
     CachedPQMF:
       _target_: rave.pqmf.CachedPQMF
@@ -112,8 +118,29 @@ model:
       n_channels: 1
       loud_stride: 1
       use_noise: true
+      residual_stack:
+        _target_: rave.blocks.ResidualStack
+        _partial_: true
+        kernel_sizes:
+        - 3
+        dilations_list:
+        - - 1
+          - 1
+        - - 3
+          - 1
+        - - 5
+          - 1
+      noise_generator:
+        _target_: rave.blocks.NoiseGenerator
+        _partial_: true
+        ratios:
+        - 4
+        - 4
+        - 4
+        noise_bands: 5
     ResidualStack:
       _target_: rave.blocks.ResidualStack
+      _partial_: true
       kernel_sizes:
       - 3
       dilations_list:
@@ -125,6 +152,7 @@ model:
         - 1
     NoiseGenerator:
       _target_: rave.blocks.NoiseGenerator
+      _partial_: true
       ratios:
       - 4
       - 4
@@ -211,6 +239,26 @@ model:
         n_channels: 1
         loud_stride: 1
         use_noise: true
+        residual_stack:
+          _target_: rave.blocks.ResidualStack
+          _partial_: true
+          kernel_sizes:
+          - 3
+          dilations_list:
+          - - 1
+            - 1
+          - - 3
+            - 1
+          - - 5
+            - 1
+        noise_generator:
+          _target_: rave.blocks.NoiseGenerator
+          _partial_: true
+          ratios:
+          - 4
+          - 4
+          - 4
+          noise_bands: 5
       discriminator:
         _target_: rave.discriminator.MultiScaleDiscriminator
         n_discriminators: 3
@@ -272,9 +320,6 @@ model:
       warmup_len: 1
 train:
   name: test
-  config:
-  - v2
-  override: []
   augment: []
   db_path: data/processed
   out_path: models/checkpoints

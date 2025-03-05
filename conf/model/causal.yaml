@@ -1,0 +1,5 @@
+cc:
+  get_padding:
+    _target_: cached_conv.get_padding
+    _partial_: True
+    mode: "causal"

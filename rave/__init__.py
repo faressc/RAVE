@@ -1,11 +1,13 @@
-from pathlib import Path
+# from pathlib import Path
 
 import cached_conv as cc
 # import gin
 import torch
+from hydra import compose, initialize
+from hydra.utils import instantiate
+from hydra.core.global_hydra import GlobalHydra
 
-
-BASE_PATH: Path = Path(__file__).parent
+# BASE_PATH: Path = Path(__file__).parent
 
 # gin.add_config_file_search_path(BASE_PATH)
 # gin.add_config_file_search_path(BASE_PATH.joinpath('configs'))
@@ -25,6 +27,21 @@ BASE_PATH: Path = Path(__file__).parent
 # __safe_configurable("get_padding")
 # __safe_configurable("Conv1d")
 # __safe_configurable("ConvTranspose1d")
+
+if GlobalHydra.instance() is not None:
+    GlobalHydra.instance().clear()
+
+config_path = '../conf'
+initialize(config_path=config_path, version_base="1.1")
+cfg = compose(config_name="config")
+
+# Instantiate cached convolution modules as partial functions
+cc.Conv1d = instantiate(cfg.model.cc.Conv1d)
+cc.ConvTranspose1d = instantiate(cfg.model.cc.ConvTranspose1d)
+cc.get_padding = instantiate(cfg.model.cc.get_padding)
+
+if GlobalHydra.instance() is not None:
+    GlobalHydra.instance().clear()
 
 from .blocks import *
 from .discriminator import *

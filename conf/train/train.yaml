@@ -1,7 +1,4 @@
 name: test
-config:
-  - v2
-override: []
 augment: []
 db_path: data/processed
 out_path: models/checkpoints

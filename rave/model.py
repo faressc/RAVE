@@ -11,8 +11,6 @@ from einops import rearrange
 from sklearn.decomposition import PCA
 from pytorch_lightning.trainer.states import RunningStage
 
-from omegaconf import OmegaConf, DictConfig
-
 import rave.core
 
 from . import blocks

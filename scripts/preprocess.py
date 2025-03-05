@@ -158,7 +158,7 @@ def search_for_audios(path: str, extensions: Sequence[str]):
     audios = flatten(audios)
     return audios
 
-@hydra.main(config_path='../conf', config_name='config')
+@hydra.main(config_path="../conf", config_name="config", version_base="1.1")
 def main(cfg):
 
     print(f"Processing audio files in {cfg.preprocess.input_path} to {cfg.preprocess.output_path}")

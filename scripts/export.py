@@ -20,7 +20,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Union, Optional
-from hydra.core.global_hydra import GlobalHydra
+from hydra.utils import instantiate
 
 try:
     import rave
@@ -433,17 +433,17 @@ class TraceModel(nn.Module):
 
 
 prior_classes = ['VariationalPrior']
-def get_prior_class_from_config():
-    prior_class = None
-    for cl in prior_classes:
-        try:
-            gin.get_bindings(cl)
-            prior_class = cl
-        except:
-            pass
-    if prior_class is None:
-        raise RuntimeError('Could not retrive Prior class from gin config')
-    return prior_class
+# def get_prior_class_from_config():
+#     prior_class = None
+#     for cl in prior_classes:
+#         try:
+#             gin.get_bindings(cl)
+#             prior_class = cl
+#         except:
+#             pass
+#     if prior_class is None:
+#         raise RuntimeError('Could not retrive Prior class from gin config')
+#     return prior_class
 
 
 def get_state_dict(RUN, PRIOR):
@@ -453,19 +453,19 @@ def get_state_dict(RUN, PRIOR):
     return state_dict
 
 
-@hydra.main(config_path="../conf", config_name="config")
+@hydra.main(config_path="../conf", config_name="config", version_base="1.1")
 def main(cfg):
     cc.use_cached_conv(cfg.export.streaming)
 
     logging.info("building rave")
 
-    config_file = rave.core.search_for_config(cfg.export.run)
-    if config_file is None:
-        print('Config file not found in %s'%cfg.export.run)
-    gin.parse_config_file(config_file)
+    # config_file = rave.core.search_for_config(cfg.export.run)
+    # if config_file is None:
+    #     print('Config file not found in %s'%cfg.export.run)
+    # gin.parse_config_file(config_file)
     cfg.export.run = rave.core.search_for_run(cfg.export.run)
 
-    pretrained = rave.RAVE()
+    pretrained = instantiate(cfg.model.rave.RAVE, _recursive_=True)
     if cfg.export.run is not None:
         logging.info('model found : %s'%cfg.export.run)
         checkpoint = torch.load(cfg.export.run, map_location='cpu')
@@ -506,21 +506,21 @@ def main(cfg):
 
     # parse prior
     prior_scripted=None
-    if cfg.export.prior is not None:
-        logging.info("loading prior from checkpoint")
-        prior_config_file = rave.core.search_for_config(cfg.export.prior)
-        if prior_config_file is None:
-            print('Config file for prior not found in %s'%cfg.export.prior)
-        else:
-            gin.clear_config()
-            logging.info("prior config file : ", prior_config_file)
-            gin.parse_config_file(prior_config_file)
-            PRIOR = rave.core.search_for_run(cfg.export.prior)
-            logging.info(f"using prior model at {PRIOR}")
-            prior_class = get_prior_class_from_config()
-            prior_pretrained = getattr(prior, prior_class)(pretrained_vae=pretrained, n_channels=pretrained.n_channels)
-            prior_pretrained.load_state_dict(get_state_dict(pretrained, PRIOR))
-            prior_scripted = TraceModel(prior_pretrained, pretrained)
+    # if cfg.export.prior is not None:
+    #     logging.info("loading prior from checkpoint")
+    #     prior_config_file = rave.core.search_for_config(cfg.export.prior)
+    #     if prior_config_file is None:
+    #         print('Config file for prior not found in %s'%cfg.export.prior)
+    #     else:
+    #         # gin.clear_config()
+    #         logging.info("prior config file : ", prior_config_file)
+    #         # gin.parse_config_file(prior_config_file)
+    #         PRIOR = rave.core.search_for_run(cfg.export.prior)
+    #         logging.info(f"using prior model at {PRIOR}")
+    #         prior_class = get_prior_class_from_config()
+    #         prior_prestrained = getattr(prior, prior_class)(pretrained_vae=pretrained, n_channels=pretrained.n_channels)
+    #         prior_pretrained.load_state_dict(get_state_dict(pretrained, PRIOR))
+    #         prior_scripted = TraceModel(prior_pretrained, pretrained)
 
 
     for m in pretrained.modules():
@@ -565,5 +565,4 @@ def main(cfg):
 
 
 if __name__ == "__main__":
-    GlobalHydra.instance().clear()
     main()

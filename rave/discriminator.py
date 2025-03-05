@@ -8,7 +8,6 @@ import torchaudio
 
 from .blocks import normalization
 
-
 def spectrogram(n_fft: int):
     return torchaudio.transforms.Spectrogram(
         n_fft,

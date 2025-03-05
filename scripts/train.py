@@ -6,14 +6,10 @@ import copy
 
 # import gin
 import hydra
-from hydra import compose, initialize
 from hydra.utils import instantiate
-from hydra.core.global_hydra import GlobalHydra
-from hydra._internal.hydra import Hydra
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader
-from omegaconf import OmegaConf
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
@@ -28,12 +24,6 @@ import rave
 import rave.core
 import rave.dataset
 from rave.transforms import get_augmentations, add_augmentation
-
-# Clear and initialize global hydra config
-GlobalHydra.instance().clear()
-config_path = '../conf'
-initialize(config_path=config_path)
-cfg = compose(config_name="config")
 
 class EMA(pl.Callback):
 
@@ -76,8 +66,8 @@ class EMA(pl.Callback):
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         self.weights.update(state_dict)
 
-# @hydra.main(config_path="../conf", config_name="config")
-def main():
+@hydra.main(config_path="../conf", config_name="config", version_base="1.1")
+def main(cfg):
     torch.set_float32_matmul_precision('high')
     torch.backends.cudnn.benchmark = True
 
@@ -95,7 +85,8 @@ def main():
                                        normalize=cfg.train.normalize,
                                        rand_pitch=cfg.train.rand_pitch,
                                        n_channels=cfg.train.channels)
-    train, val = rave.dataset.split_dataset(dataset, 98)
+    
+    train, val = rave.dataset.split_dataset(dataset, 98, max_residual=cfg.model.dataset.split_dataset.max_residual)
 
     # get data-loader
     num_workers = cfg.train.workers
@@ -125,10 +116,7 @@ def main():
         val_check['limit_train_batches'] = 1
         val_check['limit_val_batches'] = 1
 
-    # gin_hash = hashlib.md5(
-    #     gin.operative_config_str().encode()).hexdigest()[:10]
-
-    RUN_NAME = f'{cfg.train.name}'#_{gin_hash}'
+    RUN_NAME = f'{cfg.train.name}'
 
     os.makedirs(os.path.join(cfg.train.out_path, RUN_NAME), exist_ok=True)
 
@@ -197,4 +185,3 @@ def main():
 
 if __name__ == "__main__": 
     main()
-    GlobalHydra.instance().clear()
