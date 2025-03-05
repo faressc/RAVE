@@ -10,6 +10,7 @@ from hydra.utils import instantiate
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader
+from omegaconf import OmegaConf
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
@@ -66,8 +67,10 @@ class EMA(pl.Callback):
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         self.weights.update(state_dict)
 
-@hydra.main(config_path="../conf", config_name="config", version_base="1.1")
-def main(cfg):
+# @hydra.main(config_path="../conf", config_name="config", version_base="1.1")
+def main():
+    cfg = OmegaConf.load("params.yaml")
+
     torch.set_float32_matmul_precision('high')
     torch.backends.cudnn.benchmark = True
 

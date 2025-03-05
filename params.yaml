@@ -15,7 +15,6 @@ preprocess:
   - flac
   - ogg
 model:
-  SAMPLING_RATE: 44100
   CAPACITY: 64
   N_BAND: 16
   LATENT_SIZE: 16

@@ -21,6 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Union, Optional
 from hydra.utils import instantiate
+from omegaconf import OmegaConf
 
 try:
     import rave
@@ -453,8 +454,10 @@ def get_state_dict(RUN, PRIOR):
     return state_dict
 
 
-@hydra.main(config_path="../conf", config_name="config", version_base="1.1")
-def main(cfg):
+# @hydra.main(config_path="../conf", config_name="config", version_base="1.1")
+def main():
+    cfg = OmegaConf.load("params.yaml")
+
     cc.use_cached_conv(cfg.export.streaming)
 
     logging.info("building rave")

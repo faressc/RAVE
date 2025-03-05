@@ -1,0 +1,61 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python3 scripts/preprocess.py hydra/job_logging=disabled hydra/hydra_logging=disabled
+    deps:
+    - path: data/raw/
+      hash: md5
+      md5: f01dddd9dd4a3ffa7140835a7f2e6929.dir
+      size: 537552334
+      nfiles: 35
+    - path: scripts/preprocess.py
+      hash: md5
+      md5: 07d13afb31f72ff00010846c2db094fb
+      size: 7246
+    outs:
+    - path: data/processed/
+      hash: md5
+      md5: df76fef01e28be25e535b1e122991235.dir
+      size: 138244148
+      nfiles: 3
+  train:
+    cmd: python3 scripts/train.py hydra/job_logging=disabled hydra/hydra_logging=disabled
+    deps:
+    - path: data/processed/
+      hash: md5
+      md5: df76fef01e28be25e535b1e122991235.dir
+      size: 138244148
+      nfiles: 3
+    - path: rave/
+      hash: md5
+      md5: ee71372a601397535d13cd69bcfb2bc6.dir
+      size: 346487
+      nfiles: 56
+    - path: scripts/train.py
+      hash: md5
+      md5: 06b8eadcd1d75fd55af8a7c9e21869be
+      size: 6182
+    outs:
+    - path: models/checkpoints/
+      hash: md5
+      md5: 732897fc64fea2ef3391c293b511adb2.dir
+      size: 456095146
+      nfiles: 4
+  export:
+    cmd: python scripts/export.py hydra/job_logging=disabled hydra/hydra_logging=disabled
+    deps:
+    - path: models/checkpoints/
+      hash: md5
+      md5: 732897fc64fea2ef3391c293b511adb2.dir
+      size: 456095146
+      nfiles: 4
+    - path: scripts/export.py
+      hash: md5
+      md5: 82c822d5eaada9027add65a0535523be
+      size: 18745
+    outs:
+    - path: models/exports/
+      hash: md5
+      md5: 2d2888236aac00fa168800a98c66c8b2.dir
+      size: 75148496
+      nfiles: 1

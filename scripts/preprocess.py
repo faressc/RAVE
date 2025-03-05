@@ -21,6 +21,7 @@ except:
     import sys
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     from proto.audio_example_pb2 import AudioExample
+from omegaconf import OmegaConf
 
 torch.set_grad_enabled(False)
 
@@ -158,9 +159,9 @@ def search_for_audios(path: str, extensions: Sequence[str]):
     audios = flatten(audios)
     return audios
 
-@hydra.main(config_path="../conf", config_name="config", version_base="1.1")
-def main(cfg):
-
+# @hydra.main(config_path="../conf", config_name="config", version_base="1.1")
+def main():
+    cfg = OmegaConf.load("params.yaml")
     print(f"Processing audio files in {cfg.preprocess.input_path} to {cfg.preprocess.output_path}")
 
     # The LMDB database will itself create the final directory, as it has multiple files

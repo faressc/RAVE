@@ -1,5 +1,4 @@
 # GLOBAL VARIABLES
-SAMPLING_RATE: 44100
 CAPACITY: 64
 N_BAND: 16
 LATENT_SIZE: 16
@@ -17,7 +16,7 @@ core:
     _target_: rave.core.MultiScaleSTFT
     _partial_: True
     scales: [2048, 1024, 512, 256, 128]
-    sample_rate: ${model.SAMPLING_RATE}
+    sample_rate: ${SAMPLING_RATE}
     magnitude: True
 
 # DATASET CONFIG
@@ -130,7 +129,7 @@ rave:
     _target_: rave.RAVE
     latent_size: ${model.LATENT_SIZE}
     pqmf: ${model.pqmf.CachedPQMF}
-    sampling_rate: ${model.SAMPLING_RATE}
+    sampling_rate: ${SAMPLING_RATE}
     n_channels: ${N_CHANNELS}
     encoder: ${model.blocks.VariationalEncoder}
     decoder: ${model.blocks.Generator}
